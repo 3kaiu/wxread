@@ -6,15 +6,19 @@ concurrency:
 
 on:
   schedule:
-    # 凌晨任务：北京时间每天 01:00（UTC 前一天 17:00）
-    - cron: '0 17 * * *'
-    # 早间任务：北京时间每天 05:00（UTC 前一天 21:00）
-    #- cron: '0 21 * * *'
-    # 午间任务：北京时间每天 11:40（UTC 03:40）
-    #- cron: '40 3 * * *'
-    # 晚间任务：北京时间每天 22:00（UTC 14:00）
-    #- cron: '0 14 * * *'
-  workflow_dispatch:  # 手动触发
+    # 每天 3 次，单次随机 15-18 分钟。
+    # 一周固定 21 次，累计至少 315 分钟，满足每周 5 小时阅读目标。
+    # 凌晨任务：北京时间每天 00:40（UTC 前一天 16:40）
+    - cron: '40 16 * * *'
+    # 午间任务：北京时间每天 12:20（UTC 04:20）
+    - cron: '20 4 * * *'
+    # 晚间任务：北京时间每天 21:50（UTC 13:50）
+    - cron: '50 13 * * *'
+  workflow_dispatch:
+    inputs:
+      read_minutes:
+        description: '手动触发时指定单次阅读分钟数，不填则随机 15-18 分钟'
+        required: false
 
 jobs:
   deploy:
@@ -41,6 +45,21 @@ jobs:
         python -m pip install --upgrade pip
         pip install certifi==2024.8.30 charset-normalizer==3.4.0 idna==3.10 requests==2.32.3 urllib3==2.2.3
 
+    - name: Plan reading duration
+      shell: bash
+      run: |
+        manual_minutes='${{ github.event.inputs.read_minutes }}'
+        if [[ "$manual_minutes" =~ ^[0-9]+$ ]] && [ "$manual_minutes" -gt 0 ]; then
+          minutes="$manual_minutes"
+        else
+          minutes=$((15 + RANDOM % 4))
+        fi
+
+        read_num=$((minutes * 2))
+        echo "READ_MINUTES=$minutes" >> "$GITHUB_ENV"
+        echo "READ_NUM=$read_num" >> "$GITHUB_ENV"
+        echo "Planned reading: ${minutes} minutes (${read_num} loops)." >> "$GITHUB_STEP_SUMMARY"
+
     - name: Run deployment script
       env:
         WXREAD_CURL_BASH: ${{ secrets.WXREAD_CURL_BASH }}
@@ -50,7 +69,7 @@ jobs:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         SERVERCHAN_SPT:  ${{ secrets.SERVERCHAN_SPT }}
-        READ_NUM: ${{ vars.READ_NUM }}  # 使用 Repository Variables
+        READ_NUM: ${{ env.READ_NUM }}
 
       run: |
         python main.py
